@@ -1,0 +1,4 @@
+/tools/tla2tools.jar
+/.tlc/
+*.class
+/spec/Resdet_TTrace_*
