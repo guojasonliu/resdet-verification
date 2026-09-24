@@ -26,7 +26,6 @@ case "$MODE" in
         cd "$SPEC_DIR"
         "$JAVA_BIN" -XX:+UseParallelGC "-Xmx$heap" -jar "$JAR" \
             -cleanup \
-            -noGenerateSpecTE \
             -terse \
             -workers 1 \
             -metadir "$run_dir" \
@@ -46,8 +45,8 @@ case "$MODE" in
         cd "$SPEC_DIR"
         "$JAVA_BIN" -XX:+UseParallelGC "-Xmx$heap" -jar "$JAR" \
             -cleanup \
-            -noGenerateSpecTE \
             -terse \
+            -gzip \
             -workers "$workers" \
             -checkpoint 10 \
             -metadir "$run_dir" \

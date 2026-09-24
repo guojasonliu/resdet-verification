@@ -28,7 +28,6 @@ run_tlc() {
     name="${name%.cfg}"
     "$JAVA_BIN" -XX:+UseParallelGC -jar "$JAR" \
         -cleanup \
-        -noGenerateSpecTE \
         -terse \
         -workers 1 \
         -metadir "$run_root/$name" \

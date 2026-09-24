@@ -1,0 +1,21 @@
+name = "resdet"
+version = "0.1.0"
+defaultTargets = ["Resdet", "Tests"]
+
+[leanOptions]
+warningAsError = true
+
+[[lean_lib]]
+name = "Resdet"
+
+[[lean_lib]]
+name = "Tests"
+
+[[lean_lib]]
+name = "ProtocolTests"
+
+[[lean_lib]]
+name = "PaperTests"
+
+[[lean_lib]]
+name = "CrashStopTests"

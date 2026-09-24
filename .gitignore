@@ -1,4 +1,9 @@
 /tools/tla2tools.jar
+/tools/tla2tools-*.jar
 /.tlc/
+__pycache__/
 *.class
 /spec/Resdet_TTrace_*
+/tools/lean-*
+/lean/.lake/
+.DS_Store

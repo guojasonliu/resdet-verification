@@ -1,4 +1,4 @@
-# Resdet/EO TLA+ verification
+# Resdet/EO verification: TLA+ and Lean
 
 This repository contains a small, executable TLA+ model of the Resdet/EO
 protocol from *Cyclades: Taming Nested-Response Nondeterminism in Replicated
@@ -8,10 +8,42 @@ The model targets the protocol implemented as `eo` in `aegean-clone`. It
 checks the novel layer above an abstract total-order consensus service instead
 of attempting to verify etcd/Raft itself.
 
+## Lean protocol proofs
+
+The target is the **paper's protocol-correctness claims**, with consensus kept
+as its black-box assumption. [Paper coverage](lean/PAPER.md) maps Lemmas 1-2,
+Theorems 1-2, batching, and related claims to checked proofs and identifies
+remaining clarifications in the paper. The confirmed failure model is crash-stop:
+failed replicas do not rejoin, and unfinished requests retry through a surviving
+leader. Raft/Go verification and process recovery are outside scope.
+
+The [`lean/`](lean/README.md) companion now contains parameterized protocol-level
+safety proofs, a proved mapping to the delivery core, and conditional end-to-end
+liveness/exactly-once workflow-delivery proofs. It includes quorum selection,
+tagged fallback, dispatch/response validity, a separate seen cache, and
+crash-stop failover/retries. The older recovery extension is supplementary.
+It is not bounded to five replicas or ten requests.
+
+Read the [coverage and assumptions](lean/PROTOCOL.md): consensus safety remains
+abstract, and liveness requires explicit progress contracts including fair
+proposal/re-proposal attempts. The primary theorem only requires consensus
+progress for actual attempts by the eventual stable leader, not all old buffered
+proposals. Neither the Go code nor a literal translation of the TLA+ source has
+been verified.
+
+```sh
+make fetch-lean     # one-time project-local Lean 4.24.0 installation
+make check-lean     # proofs, concrete examples, and a strict axiom audit
+```
+
+This is a separate local check; it does not launch, stop, or modify any TLC run.
+The existing `make check` and research profiles below remain TLA+-only.
+
 ## Quick start
 
-Java 11 or newer and `curl` are required. The runner downloads a pinned copy
-of the official TLA+ command-line tools and verifies its SHA-256 digest.
+Java 11 or newer and `curl` are required. The runner downloads the immutable
+official TLA+ Tools 1.7.4 release and verifies its SHA-256 digest. It does not
+use the moving 1.8.0 prerelease asset, which upstream replaces on new builds.
 
 ```sh
 make check
@@ -137,6 +169,67 @@ profile uses `PrioritizeUniqueDecisions = TRUE` so each newly proposed request
 gets a first log position before retries can fill the bounded ten-slot log;
 the prototype safety suite separately explores arbitrary retry ordering.
 
+### Fresh CloudLab node
+
+For **sm220u with Ubuntu 22.04 or 24.04**, use the standalone
+`scripts/setup-sm220u.sh` instead of the boot-disk helper below. It can be saved
+anywhere (including `~/setup.sh`) and locates or clones the repository under
+`~/resdet-verification`. Start with its read-only inventory:
+
+```sh
+bash scripts/setup-sm220u.sh --inspect
+```
+
+If a large filesystem is already mounted at `/mnt/tlc`, run
+`bash scripts/setup-sm220u.sh --start`. Otherwise, after identifying six to eight unused
+whole NVMe namespace devices, pass their **explicit paths** to
+`bash scripts/setup-sm220u.sh --setup ...`. Preparation refuses disks with existing
+signatures, partitions, mounts, or holders and requires `PREPARE` before
+initializing them. It creates an LVM stripe across the selected drives using 95% of capacity,
+formats ext4, and mounts it at `/mnt/tlc`. The stripe has no redundancy.
+
+Both setup and start install dependencies, verify a separately named TLC
+1.7.4 JAR, run a two-trace smoke test, and **launch the exhaustive run** in
+Screen `resdet`; do not invoke a second `make` command. Defaults are 140g heap
+and 32 workers. Each unique `/mnt/tlc/resdet/research-*` directory contains
+frozen model/JAR inputs, checksums, settings, the Java PID, `tlc.log`, and
+`states/` checkpoint data. Startup is reported only after Java is alive and
+TLC has computed initial states. Arrange a consistent off-node checkpoint
+backup before expiration; no external backup destination is configured by
+this script. These local disks are lost when the experiment expires.
+
+The actual six-drive provisioning command and run location for
+`sm220u-10s10541` are recorded in
+[`scripts/sm220u-setup-record.md`](scripts/sm220u-setup-record.md).
+
+Launcher refusal/shutdown tests (no disks are formatted):
+
+```sh
+python3 -m unittest discover -s tests -p 'test_sm220u_setup.py'
+```
+
+On a fresh CloudLab node with a large local disk (the `r7525` profile uses
+`/dev/sda`), clone the repository and run:
+
+```sh
+git clone https://github.com/guojasonliu/resdet-verification.git
+cd resdet-verification
+./scripts/cloudlab-research.sh
+```
+
+The script installs any missing Java, `curl`, and GNU Screen packages;
+prepares and mounts unused local storage at `/mnt/tlc`; downloads and verifies
+the pinned TLC release; chooses conservative heap and worker defaults; and
+starts the exhaustive check in a detached Screen session named `resdet`.
+Before creating and formatting the unused partition, it requires the literal
+confirmation `PREPARE`. It will reuse a mounted filesystem and will not
+reformat a partition with a recognized filesystem.
+
+Attach with `screen -r resdet`. Detach with `Ctrl-A`, then `D`. The script
+prints the exact log path and disk-monitoring command when it launches. Local
+CloudLab storage is ephemeral, so copy the log elsewhere before terminating
+the experiment.
+
 ## Paper theorem correspondence
 
 The paper's two headline theorems map directly to TLC checks:
@@ -204,11 +297,13 @@ The Go performance setting `eo_disable_follower_elections` is deliberately
 not used by the strict model. It is an experiment-only optimization, not a
 safety mechanism.
 
-Crash/recovery is modeled at the paper's protocol level: a recovered replica
+The optional crash/recovery extension assumes that a recovered replica
 retains its local learned and delivered state, and the consensus log remains
 durable. The current Go prototype's `raft_box` uses etcd `MemoryStorage`, so
 these checks are not evidence that the implementation itself survives process
 restart without an added durable-storage/recovery path.
+This extension is outside the author's current crash-stop paper scope; the
+primary Lean results exclude recovery rather than requiring this persistence.
 
 `TimeoutSelect` nondeterministically chooses any payload observed before the
 timeout. This overapproximates the Go implementation's deterministic
